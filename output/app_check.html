@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App check · Campus Customs shop + chatbot (HW4 Problem 11)</title>
+<style>
+  :root { --bg:#070b14; --card:#0e1524; --border:#22304a; --text:#e9edf5; --muted:#8d98ad; --blue:#00356b; --link:#5b8fd6; --ok:#7fc89a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.55 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+  h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 600; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.45rem; margin: 0 0 .75rem; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; }
+  a { color: var(--link); }
+  .summary { width:100%; border-collapse: collapse; margin: 1rem 0 2.5rem; }
+  .summary th, .summary td { text-align:left; padding:.55rem .7rem; border-bottom:1px solid var(--border); vertical-align: top; }
+  .summary th { color: var(--muted); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; }
+  .pass { color: var(--ok); font-weight: 700; white-space: nowrap; }
+  section.check { background: var(--card); border: 1px solid var(--border); border-top: 4px solid var(--blue); border-radius: 12px; padding: 1.5rem; margin: 0 0 2rem; }
+  .tag { display:inline-block; background:var(--blue); color:#fff; font-size:.75rem; font-weight:700; padding:.15rem .55rem; border-radius:999px; margin-right:.5rem; vertical-align: 3px; }
+  figure { margin: 0 0 1rem; }
+  figure img { width: 100%; height: auto; display: block; border-radius: 8px; border: 1px solid var(--border); }
+  figcaption { color: var(--muted); font-size: .9rem; margin-top: .45rem; }
+  .proves { background: rgba(127,200,154,.08); border-left: 3px solid var(--ok); padding: .7rem .9rem; border-radius: 6px; margin: 0 0 1rem; }
+  .proves strong { color: var(--ok); }
+  details { margin-top: .5rem; }
+  summary { cursor: pointer; color: var(--link); }
+  table.db { border-collapse: collapse; margin: .6rem 0; font-size: .9rem; }
+  table.db th, table.db td { border: 1px solid var(--border); padding: .3rem .6rem; text-align: left; }
+  table.db th { background: #152036; }
+  .out { color: #f08a8a; font-weight: 600; }
+  code { background:#152036; padding:.05rem .35rem; border-radius:4px; font-size:.9em; }
+  .steps { color: var(--muted); font-size: .92rem; margin: 0 0 1rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>App check: Campus Customs shop + chatbot</h1>
+  <p class="sub">HW4 · Problem 11 · Tested on the live local site (React + Vite front end, FastAPI + PydanticAI backend, model <code>gpt-5.6-luna</code> via Portkey) on 4 Oct 2026, browsing as a <strong>guest</strong>. Every screenshot is from the running app; the database values below were queried from <code>data/campus_customs.db</code> at the same time.</p>
+
+  <table class="summary">
+    <thead><tr><th>#</th><th>Check</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><a href="#check1">Chat checks an item's inventory, with honest stock and price from the database</a></td><td class="pass">✓ Pass</td></tr>
+      <tr><td>2</td><td><a href="#check2">Dynamic search-result cards appear after a category question ("hoodies")</a></td><td class="pass">✓ Pass</td></tr>
+      <tr><td>3</td><td><a href="#check3">Problem 9 usability feature: "My size" filter + price sort on Products</a></td><td class="pass">✓ Pass</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── Check 1 ───────────────────────── -->
+  <section class="check" id="check1">
+    <h2><span class="tag">Check 1</span>Chat checks the inventory level of an item</h2>
+    <p class="steps"><strong>Steps:</strong> opened the <em>Champion Reverse Weave Hoodie 1</em> product page → opened the chat → asked <em>"How many of this hoodie are left in each size, and what does it cost?"</em> (no product name, using "this").</p>
+    <figure>
+      <img src="app_check_images/inventory.png" alt="Product page for Champion Reverse Weave Hoodie 1 with the chat panel listing $68 and stock by size: XS sold out, S 25, M 20, L 20, XL sold out, XXL 15">
+      <figcaption>Chat answer (right) next to the product page's own stock panel (left), which is rendered from the inventory table.</figcaption>
+    </figure>
+    <p class="proves"><strong>What this proves:</strong> the assistant looked up live data and answered with the exact price ($68) and per-size counts, clearly marking the sold-out sizes (XS, XL). Every number matches the database rows below and the page's own stock panel. It also understood "this hoodie" from the page the shopper was on.</p>
+    <details open>
+      <summary>Database rows (catalogue + inventory) at test time</summary>
+      <table class="db">
+        <tr><th>Product</th><th>Price</th><th>XS</th><th>S</th><th>M</th><th>L</th><th>XL</th><th>XXL</th></tr>
+        <tr><td>Champion Reverse Weave Hoodie 1</td><td>$68.00</td><td class="out">0</td><td>25</td><td>20</td><td>20</td><td class="out">0</td><td>15</td></tr>
+      </table>
+      Chat reply: <em>"It's <strong>$68</strong>. Stock by size: XS: sold out · S: 25 in stock · M: 20 in stock · L: 20 in stock · XL: sold out · XXL: 15 in stock."</em> ✓ All seven values match.
+    </details>
+  </section>
+
+  <!-- ───────────────────────── Check 2 ───────────────────────── -->
+  <section class="check" id="check2">
+    <h2><span class="tag">Check 2</span>Dynamic search-result cards after a category question</h2>
+    <p class="steps"><strong>Steps:</strong> went to the Home page → asked the chat <em>"what hoodies do you have?"</em>.</p>
+    <figure>
+      <img src="app_check_images/search_cards.png" alt="Home page showing a 'From your chat: Hoodies, 25 items' grid of product cards with images, names, prices and descriptions, and the chat panel saying it put all 25 at the top of the page">
+      <figcaption>"From your chat · Hoodies · 25 items" grid at the top of the page, with the chat reply and mini-cards on the right.</figcaption>
+    </figure>
+    <p class="proves"><strong>What this proves:</strong> the agent searched the catalogue and returned structured product matches, and the website rendered them as full product cards (image, name, price, short description, sizes) at the top of the current page without a reload. The grid has <strong>25</strong> cards, exactly the number of hoodies in the database, with real prices ($45 / $68).</p>
+    <details>
+      <summary>Database check</summary>
+      Products in the Hoodies category: <strong>25</strong> (prices $45 and $68). Cards on the page: <strong>25</strong>, each linking to its own product page.
+    </details>
+  </section>
+
+  <!-- ───────────────────────── Check 3 ───────────────────────── -->
+  <section class="check" id="check3">
+    <h2><span class="tag">Check 3</span>Problem 9 usability: shop by size + sort by price</h2>
+    <p class="steps"><strong>Steps:</strong> opened <em>Shop All</em> → clicked size <strong>M</strong> under "My size" → set Sort to <em>Price: low to high</em> → clicked the <em>Hoodies</em> category.</p>
+    <figure>
+      <img src="app_check_images/usability_size_filter.png" alt="Products page filtered to Hoodies in stock in size M: '19 of 102 items · in stock in M', size M selected, sort Price low to high, each card showing a green 'M in stock' badge">
+      <figcaption>"19 of 102 items · in stock in M", with M highlighted, sort set to price low → high, and a green "M in stock" badge on every card.</figcaption>
+    </figure>
+    <p class="proves"><strong>What this proves:</strong> a shopper can narrow 102 items to only what they can actually buy in their size, cheapest first, without opening each product. The count is correct: 19 hoodies have M in stock in the database, and the 6 hoodies that are sold out in M are hidden.</p>
+    <details>
+      <summary>Database check</summary>
+      Hoodies with <code>inventory.quantity &gt; 0</code> for size M: <strong>19</strong>. Hidden because M is sold out (6): Crew Left Chest Hoodie, Ice Hockey Left Chest Hoodie, The Forest School Hoodie, Yale Grandma Hoodie, Yale Sports Hoodie Soccer, Yale Sports Hoodie Swimming. Card prices on the page run $45, $45, then $68 (ascending ✓).
+    </details>
+  </section>
+
+  <p class="sub">More detail on how each feature works: <code>harness.md</code> (§5 tools and stock, §6 chat search cards, §8 usability), <code>usability.md</code>, and <code>design.md</code> in this folder.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,137 @@
+[
+{"time": "2026-10-04T23:18:41.999+00:00", "run_id": "769887acdd94", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 36, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:18:42.053+00:00", "run_id": "769887acdd94", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:18:45.255+00:00", "run_id": "769887acdd94", "event": "tool_call", "step": 1, "tool": "search_products", "args": "{\"query\": \"Yale\"}"}
+,
+{"time": "2026-10-04T23:18:45.255+00:00", "run_id": "769887acdd94", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["search_products"], "input_tokens": 2871, "output_tokens": 109}
+,
+{"time": "2026-10-04T23:18:45.263+00:00", "run_id": "769887acdd94", "event": "tool_result", "step": 2, "tool": "search_products", "result": "102 matches; top: 2025 Yale Vs Harvard T Shirt, Benjamin Franklin T Shirt, Big Yale Tri Blend T Shirt | note: Showing the best 6 of 102 matches."}
+,
+{"time": "2026-10-04T23:18:45.263+00:00", "run_id": "769887acdd94", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:18:47.183+00:00", "run_id": "769887acdd94", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [], \"page_results\": {}, \"reply_chars\": 178}"}
+,
+{"time": "2026-10-04T23:18:47.184+00:00", "run_id": "769887acdd94", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3749, "output_tokens": 87}
+,
+{"time": "2026-10-04T23:18:47.187+00:00", "run_id": "769887acdd94", "event": "run_finished", "stop_reason": "final_result", "seconds": 5.19, "steps": 2, "requests": 2, "input_tokens": 6620, "output_tokens": 196, "reply_chars": 178, "product_ids": [], "page_results": 0}
+,
+{"time": "2026-10-04T23:18:47.229+00:00", "run_id": "16bc2d564792", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 29, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:18:47.230+00:00", "run_id": "16bc2d564792", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:18:48.452+00:00", "run_id": "16bc2d564792", "event": "tool_call", "step": 1, "tool": "check_stock", "args": "{\"product\": \"Yale Mom Hoodie\", \"size\": \"XL\"}"}
+,
+{"time": "2026-10-04T23:18:48.454+00:00", "run_id": "16bc2d564792", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["check_stock"], "input_tokens": 2869, "output_tokens": 24}
+,
+{"time": "2026-10-04T23:18:48.464+00:00", "run_id": "16bc2d564792", "event": "tool_result", "step": 2, "tool": "check_stock", "result": "Yale Mom Hoodie $68.0: XL: 8 in stock. In stock: XS (25), S (8), M (8), L (25), XL (8), XXL (2)."}
+,
+{"time": "2026-10-04T23:18:48.465+00:00", "run_id": "16bc2d564792", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:18:50.594+00:00", "run_id": "16bc2d564792", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [\"yale-mom-hoodie\"], \"page_results\": {}, \"reply_chars\": 73}"}
+,
+{"time": "2026-10-04T23:18:50.595+00:00", "run_id": "16bc2d564792", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3096, "output_tokens": 102}
+,
+{"time": "2026-10-04T23:18:50.598+00:00", "run_id": "16bc2d564792", "event": "run_finished", "stop_reason": "final_result", "seconds": 3.37, "steps": 2, "requests": 2, "input_tokens": 5965, "output_tokens": 126, "reply_chars": 73, "product_ids": ["yale-mom-hoodie"], "page_results": 0}
+,
+{"time": "2026-10-04T23:18:50.639+00:00", "run_id": "75a9da657d2c", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 65, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:18:50.640+00:00", "run_id": "75a9da657d2c", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:18:54.415+00:00", "run_id": "75a9da657d2c", "event": "tool_call", "step": 1, "tool": "search_products", "args": "{\"query\": \"Yale merchandise\"}"}
+,
+{"time": "2026-10-04T23:18:54.417+00:00", "run_id": "75a9da657d2c", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["search_products"], "input_tokens": 2879, "output_tokens": 95}
+,
+{"time": "2026-10-04T23:18:54.427+00:00", "run_id": "75a9da657d2c", "event": "tool_result", "step": 2, "tool": "search_products", "result": "1 matches; top: School Of Nursing Crest T Shirt"}
+,
+{"time": "2026-10-04T23:18:54.428+00:00", "run_id": "75a9da657d2c", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:18:56.503+00:00", "run_id": "75a9da657d2c", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [], \"page_results\": {}, \"reply_chars\": 161}"}
+,
+{"time": "2026-10-04T23:18:56.504+00:00", "run_id": "75a9da657d2c", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3050, "output_tokens": 113}
+,
+{"time": "2026-10-04T23:18:56.507+00:00", "run_id": "75a9da657d2c", "event": "run_finished", "stop_reason": "final_result", "seconds": 5.87, "steps": 2, "requests": 2, "input_tokens": 5929, "output_tokens": 208, "reply_chars": 161, "product_ids": [], "page_results": 0}
+,
+{"time": "2026-10-04T23:18:56.554+00:00", "run_id": "a0ff10936389", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 89, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:18:56.555+00:00", "run_id": "a0ff10936389", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:18:58.132+00:00", "run_id": "a0ff10936389", "event": "tool_call", "step": 1, "tool": "check_stock", "args": "{\"product\": \"Yale Mom Hoodie\", \"size\": \"XL\"}"}
+,
+{"time": "2026-10-04T23:18:58.133+00:00", "run_id": "a0ff10936389", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["check_stock"], "input_tokens": 2883, "output_tokens": 58}
+,
+{"time": "2026-10-04T23:18:58.142+00:00", "run_id": "a0ff10936389", "event": "tool_result", "step": 2, "tool": "check_stock", "result": "Yale Mom Hoodie $68.0: XL: 8 in stock. In stock: XS (25), S (8), M (8), L (25), XL (8), XXL (2)."}
+,
+{"time": "2026-10-04T23:18:58.143+00:00", "run_id": "a0ff10936389", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:19:00.077+00:00", "run_id": "a0ff10936389", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [\"yale-mom-hoodie\"], \"page_results\": {}, \"reply_chars\": 251}"}
+,
+{"time": "2026-10-04T23:19:00.078+00:00", "run_id": "a0ff10936389", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3110, "output_tokens": 162}
+,
+{"time": "2026-10-04T23:19:00.081+00:00", "run_id": "a0ff10936389", "event": "run_finished", "stop_reason": "final_result", "seconds": 3.53, "steps": 2, "requests": 2, "input_tokens": 5993, "output_tokens": 220, "reply_chars": 251, "product_ids": ["yale-mom-hoodie"], "page_results": 0}
+,
+{"time": "2026-10-04T23:19:00.131+00:00", "run_id": "9dd37138aea2", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 92, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:19:00.133+00:00", "run_id": "9dd37138aea2", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:19:02.237+00:00", "run_id": "9dd37138aea2", "event": "tool_call", "step": 1, "tool": "search_products", "args": "{\"query\": \"hoodies\"}"}
+,
+{"time": "2026-10-04T23:19:02.238+00:00", "run_id": "9dd37138aea2", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["search_products"], "input_tokens": 2881, "output_tokens": 56}
+,
+{"time": "2026-10-04T23:19:02.248+00:00", "run_id": "9dd37138aea2", "event": "tool_result", "step": 2, "tool": "search_products", "result": "27 matches; top: Yale Sports Hoodie Tennis, Basic Hoodie Big Yale, Champion Reverse Weave Hoodie 1 | note: Showing the best 6 of 27 matches."}
+,
+{"time": "2026-10-04T23:19:02.248+00:00", "run_id": "9dd37138aea2", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:19:05.414+00:00", "run_id": "9dd37138aea2", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [], \"page_results\": {}, \"reply_chars\": 203}"}
+,
+{"time": "2026-10-04T23:19:05.415+00:00", "run_id": "9dd37138aea2", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3781, "output_tokens": 232}
+,
+{"time": "2026-10-04T23:19:05.418+00:00", "run_id": "9dd37138aea2", "event": "run_finished", "stop_reason": "final_result", "seconds": 5.29, "steps": 2, "requests": 2, "input_tokens": 6662, "output_tokens": 288, "reply_chars": 203, "product_ids": [], "page_results": 0}
+,
+{"time": "2026-10-04T23:19:05.464+00:00", "run_id": "b23db74593b9", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 83, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:19:05.465+00:00", "run_id": "b23db74593b9", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:19:07.868+00:00", "run_id": "b23db74593b9", "event": "run_finished", "stop_reason": "error", "error": "ModelHTTPError", "seconds": 2.4, "steps": 1}
+,
+{"time": "2026-10-04T23:20:01.323+00:00", "run_id": "8586854e1c45", "event": "run_started", "logged_in": false, "page": "/", "message_chars": 83, "model": null}
+,
+{"time": "2026-10-04T23:20:01.323+00:00", "run_id": "8586854e1c45", "event": "run_finished", "stop_reason": "crisis_response", "steps": 0, "requests": 0, "note": "safety.is_crisis matched; model not called; not saved"}
+,
+{"time": "2026-10-04T23:20:01.347+00:00", "run_id": "5773a6bad172", "event": "run_started", "logged_in": false, "page": "/", "on_product_page": false, "message_chars": 36, "history_messages": 0, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:20:01.390+00:00", "run_id": "5773a6bad172", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:20:01.973+00:00", "run_id": "5773a6bad172", "event": "tool_call", "step": 1, "tool": "search_products", "args": "{\"query\": \"Yale\"}"}
+,
+{"time": "2026-10-04T23:20:01.974+00:00", "run_id": "5773a6bad172", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["search_products"], "input_tokens": 2871, "output_tokens": 109}
+,
+{"time": "2026-10-04T23:20:01.981+00:00", "run_id": "5773a6bad172", "event": "tool_result", "step": 2, "tool": "search_products", "result": "102 matches; top: 2025 Yale Vs Harvard T Shirt, Benjamin Franklin T Shirt, Big Yale Tri Blend T Shirt | note: Showing the best 6 of 102 matches."}
+,
+{"time": "2026-10-04T23:20:01.982+00:00", "run_id": "5773a6bad172", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:20:02.255+00:00", "run_id": "5773a6bad172", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [], \"page_results\": {}, \"reply_chars\": 178}"}
+,
+{"time": "2026-10-04T23:20:02.256+00:00", "run_id": "5773a6bad172", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3749, "output_tokens": 87}
+,
+{"time": "2026-10-04T23:20:02.260+00:00", "run_id": "5773a6bad172", "event": "run_finished", "stop_reason": "final_result", "seconds": 0.91, "steps": 2, "requests": 2, "input_tokens": 6620, "output_tokens": 196, "reply_chars": 178, "product_ids": [], "page_results": 0}
+,
+{"time": "2026-10-04T23:20:23.871+00:00", "run_id": "fd285821b2a2", "event": "run_started", "logged_in": true, "page": "/", "on_product_page": false, "message_chars": 36, "history_messages": 8, "redacted": null, "model": "gpt-5.6-luna"}
+,
+{"time": "2026-10-04T23:20:23.872+00:00", "run_id": "fd285821b2a2", "event": "model_request", "step": 1}
+,
+{"time": "2026-10-04T23:20:26.102+00:00", "run_id": "fd285821b2a2", "event": "tool_call", "step": 1, "tool": "get_customer_info", "args": "{}"}
+,
+{"time": "2026-10-04T23:20:26.104+00:00", "run_id": "fd285821b2a2", "event": "model_response", "step": 1, "finish_reason": "tool_call", "tool_calls": ["get_customer_info"], "input_tokens": 3364, "output_tokens": 27}
+,
+{"time": "2026-10-04T23:20:26.106+00:00", "run_id": "fd285821b2a2", "event": "tool_result", "step": 2, "tool": "get_customer_info", "result": "logged-in profile returned (name/email withheld from audit)"}
+,
+{"time": "2026-10-04T23:20:26.106+00:00", "run_id": "fd285821b2a2", "event": "model_request", "step": 2}
+,
+{"time": "2026-10-04T23:20:28.162+00:00", "run_id": "fd285821b2a2", "event": "tool_call", "step": 2, "tool": "final_result", "args": "{\"product_ids\": [], \"page_results\": {}, \"reply_chars\": 87}"}
+,
+{"time": "2026-10-04T23:20:28.163+00:00", "run_id": "fd285821b2a2", "event": "model_response", "step": 2, "finish_reason": "tool_call", "tool_calls": ["final_result"], "input_tokens": 3430, "output_tokens": 69}
+,
+{"time": "2026-10-04T23:20:28.166+00:00", "run_id": "fd285821b2a2", "event": "run_finished", "stop_reason": "final_result", "seconds": 4.3, "steps": 2, "requests": 2, "input_tokens": 6794, "output_tokens": 96, "reply_chars": 87, "product_ids": [], "page_results": 0}
+]
