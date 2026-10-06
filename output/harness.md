@@ -8,6 +8,8 @@ Campus Customs and Yale merchandise are a classroom scenario, not a partnership 
 
 **What it is:** a React + Vite + TypeScript shop (`frontend`) and a FastAPI backend (`backend`) whose chat "brain" is a PydanticAI agent (`gpt-5.6-luna` via Portkey). Shoppers browse 102 products, create accounts, chat about merch, see matching items appear on the page, and get price and stock answers straight from `data/campus_customs.db`.
 
+**File layout note:** the backend follows the required layout exactly: `main.py`, `agent.py`, `models.py`, `tools.py`, `prompts/prompt.md`. Helper modules built along the way were merged into those files as clearly marked sections: catalogue access and chat memory → `tools.py`; redaction, crisis handling and the audit trail → `agent.py`; accounts → `main.py`. Earlier sections describe the same functions; they now live in those files.
+
 **Quick reference:** every model field and why (§11.1), tools and abilities (§11.2), all safety rules (§11.3), specs and limits (§11.4), how to run (§11.5).
 
 **One chat turn, end to end**
@@ -16,9 +18,9 @@ Campus Customs and Yale merchandise are a classroom scenario, not a partnership 
 Browser (ChatWidget) ── POST /api/chat {message, history, page} ─► main.py
   │                                                                  │ session cookie → User (or guest)
   │                                                                  ▼
-  │                       agent.run_chat()  1. safety.redact() (card/SSN/password)  2. crisis check (fixed reply)
+  │                       agent.run_chat()  1. agent.redact() (card/SSN/password)  2. crisis check (fixed reply)
   │                                         3. load history (DB if logged in)   4. ShopDeps {user, page, …}
-  │                                         5. agent.iter() loop ─► tools.py ─► db.py (read-only SQL)
+  │                                         5. agent.iter() loop ─► tools.py ─► tools.py (read-only SQL)
   │                                              │ every step ─► output/audit_trail.json (append-only)
   │                                         6. output validator: numbers + sold-out claims must match tools
   │                                         7. product ids → ProductCards from DB; save turn (logged in)
@@ -31,10 +33,10 @@ Browser (ChatWidget) ── POST /api/chat {message, history, page} ─► main.
 |---|---|---|
 | Made-up price or stock | Tools read the DB every call; replies with numbers no tool returned, or calling a sold-out size available, are rejected (`ModelRetry`) | `tools.py`, `agent.py` §5.2, §8.4 |
 | Made-up products | Cards built from the DB by id; unknown ids dropped; page grids only from this turn's search | `agent.py` §6.2 |
-| Sensitive data in chat | Redacted before the model, the DB, and the audit trail | `safety.py` §8.4 |
-| Shopper in crisis | Fixed caring reply with 988 / Yale Mental Health; no model call; not saved | `safety.py` §10.3 |
+| Sensitive data in chat | Redacted before the model, the DB, and the audit trail | `agent.py` §8.4 |
+| Shopper in crisis | Fixed caring reply with 988 / Yale Mental Health; no model call; not saved | `agent.py` §10.3 |
 | Prompt injection / off-topic / false promises | 12 safety rules in the prompt; tool output treated as data | `prompts/prompt.md` §10.2 |
-| Account security | PBKDF2-SHA256 600k + salt, lockout, HttpOnly session, no hash ever leaves the server | `auth.py` §3 |
+| Account security | PBKDF2-SHA256 600k + salt, lockout, HttpOnly session, no hash ever leaves the server | `main.py` §3 |
 | Provider content filter | Polite reply instead of an error; logged as `content_filter` | `main.py` §10.3 |
 | Cost runaway | ≤ 6 model requests per turn, last 10 history messages, compact tool results, tools offered only when useful | `agent.py`, `tools.py` §8.3 |
 
@@ -42,10 +44,12 @@ Browser (ChatWidget) ── POST /api/chat {message, history, page} ─► main.
 
 | Path | What |
 |---|---|
-| `backend/main.py` | FastAPI app (run: `uvicorn main:app --reload --port 8000` from `backend`) |
-| `backend/agent.py` · `tools.py` · `models.py` · `prompts/prompt.md` | Agent wiring, tools, typed models, system prompt |
-| `backend/db.py` · `auth.py` · `memory.py` · `safety.py` · `audit.py` | Catalogue, accounts, chat history, redaction/crisis, audit trail |
-| `backend/test_tools.py` · `bench.py` | Offline tests (no model calls) · cost/latency benchmark |
+| `backend/main.py` | FastAPI app (run: `uvicorn main:app --reload --port 8000` from `backend/`). Section 1: accounts (PBKDF2 hashing, sign-up, login, lockout, sessions). Section 2: all API routes |
+| `backend/agent.py` | Section 1: input safety (redaction, crisis reply). Section 2: append-only audit trail. Section 3: the agent (model, prompt, tools, `ShopReply`, output checks, `run_chat`) |
+| `backend/tools.py` | Section 1: catalogue/inventory access (categories, departments, cards). Section 2: customer memory (`chat_messages`). Section 3: the six agent tools |
+| `backend/models.py` | Every Pydantic / PydanticAI type |
+| `backend/prompts/prompt.md` | System prompt |
+| `backend/test_tools.py` · `bench.py` (**local only, gitignored**) | Offline tests (no model calls) · cost/latency benchmark. Kept out of the repo to match the required layout |
 | `frontend/src/` | React pages, chat widget, results panel |
 | `output/audit_trail.json` | Append-only agent loop log (§10) |
 | `output/app_check.html` | Live-site checks with screenshots (Problem 11) |
@@ -113,7 +117,7 @@ SQLite uses this to track the last auto-increment id per table. It has no shop o
 
 ## 2. The backend API (`backend/main.py`)
 
-A small FastAPI app reads the database in **read-only** mode (`db.py`) and serves the site. The React dev server proxies `/api` and `/images` to it on port 8000. Typed response shapes live in `models.py`.
+A small FastAPI app reads the database in **read-only** mode (`tools.py`) and serves the site. The React dev server proxies `/api` and `/images` to it on port 8000. Typed response shapes live in `models.py`.
 
 | Route | What it returns | Used by |
 |---|---|---|
@@ -127,9 +131,9 @@ Two clean-ups happen in the API so the frontend and agent don't have to repeat t
 - `garment_type` is mapped to shop categories (Hoodies, Crewnecks, Quarter-zips, Tees, Jackets, Long sleeves).
 - Stock is summed across sizes for "sold out" labels, and sizes are sorted XS → XXL.
 
-## 3. Authentication (`backend/auth.py`)
+## 3. Authentication (`main.py`)
 
-Shoppers can browse and chat without an account. An account adds a name the chatbot can greet them by, and (in later problems) saved chat history. All account logic lives in `auth.py`; `main.py` only exposes the routes. The React side is `src/auth.tsx` (shared login state) plus the `Signup` and `Login` pages.
+Shoppers can browse and chat without an account. An account adds a name the chatbot can greet them by, and (in later problems) saved chat history. All account logic lives in `main.py`; `main.py` only exposes the routes. The React side is `src/auth.tsx` (shared login state) plus the `Signup` and `Login` pages.
 
 ### 3.1 How it works
 
@@ -479,7 +483,7 @@ ChatReply { reply, products: ProductCard[≤6], page: PageResults | null }
 
 ### 6.2 Why it's split this way
 
-- **The agent decides *what* to show; the database decides *what it looks like*.** The model only returns ids and a title. Names, prices, images, and descriptions on the cards come from `db.list_products()`, so a card can never show a made-up price.
+- **The agent decides *what* to show; the database decides *what it looks like*.** The model only returns ids and a title. Names, prices, images, and descriptions on the cards come from `tools.list_products()`, so a card can never show a made-up price.
 - **Page ids must come from a real search this turn.** `ShopDeps.searched_ids` records every id `search_products` returned during the turn. `run_chat()` keeps only page ids that exist **and** are in that set, so the grid is always a genuine catalogue result. If none survive, `page` is `null` and the page doesn't change.
 - **Two separate lists.** `product_ids` (≤ 6) are the items the reply talks about, shown as small cards in the chat. `page_results` is the full browse set for the page. A "do you have XL?" question fills the first and leaves the page alone.
 - **Token cost.** The agent sees full details for only the top 6, plus bare ids for the rest. Writing 25 ids in the output is about 250 tokens.
@@ -580,7 +584,7 @@ Everyone can chat. Only logged-in shoppers get history that **persists**.
 | Can chat, search, get page cards, ask about "this" item | ✓ | ✓ |
 | Where the conversation lives | Browser memory only (React state in `ChatWidget`) | `chat_messages` table in `campus_customs.db` |
 | History the agent sees | Up to the last 10 messages **sent by the browser** with each request | Last 10 messages **loaded from the database by the server** (the browser's copy is ignored) |
-| Saved to the database | **Never.** `run_chat()` only calls `memory.save_turn()` when `user is not None`. | Every question and answer, with the product cards shown |
+| Saved to the database | **Never.** `run_chat()` only calls `tools.save_turn()` when `user is not None`. | Every question and answer, with the product cards shown |
 | After a page reload | Gone (fresh greeting) | Restored: "Welcome back, {name}" + saved messages and cards |
 | After logout | n/a | The widget resets to the guest greeting; history stays in the DB for next login |
 | `GET /api/chat/history` | `{logged_in: false, messages: []}` | `{logged_in: true, messages: [...]}` (last 50) |
@@ -599,7 +603,7 @@ History is stored in the existing **`chat_messages`** table, one row per message
 | `products_json` | Assistant rows: JSON list of the product cards shown with that reply. User rows: `NULL`. |
 | `created_at` | Set by the database |
 
-`backend/memory.py` owns all reads and writes:
+`tools.py` owns all reads and writes:
 
 | Function | Used by | What it does |
 |---|---|---|
@@ -729,7 +733,7 @@ Four improvements: two on the front end (look better, easier to use) and two on 
 - **Sizes on every card:** "Sizes: S · M · L · XXL", or amber "Only XS, L left" when two or fewer remain, so availability is visible without clicking.
 - **Reset filters** link, a friendly empty state ("No products match in size XS" + "Clear all filters"), and shimmer **loading skeletons** instead of a blank grid.
 - Filters live in the URL (`/products?size=M&category=Hoodies&sort=price-asc`), so they survive back/forward and can be shared.
-- **Backend support:** `ProductCard` gained `sizes_in_stock`, computed in `db.list_products()` with one SQL `GROUP_CONCAT`, so there's still one request for the whole grid.
+- **Backend support:** `ProductCard` gained `sizes_in_stock`, computed in `tools.list_products()` with one SQL `GROUP_CONCAT`, so there's still one request for the whole grid.
 
 **Verified:** XS → "75 of 102 items" (DB: 75 products with XS > 0 ✓). XS + Hoodies → 20 (DB: 20 ✓). Price low→high starts at $45 and ends at $68 for hoodies ✓. Reset returns to 102 ✓.
 
@@ -774,7 +778,7 @@ Honest note: the model still makes one tool call on pure policy questions (now a
 
 ### 8.4 Backend 2: more accurate and safer output
 
-**a) Sensitive-data redaction (`safety.py`).** Before a message reaches the model **or** the database, `safety.redact()` replaces:
+**a) Sensitive-data redaction (`agent.py`).** Before a message reaches the model **or** the database, `agent.redact()` replaces:
 - **card numbers:** 13–19 digits with spaces or dashes that **pass the Luhn check**, so order numbers and prices aren't touched
 - **US SSNs** (`123-45-6789`)
 - **CVV/CVC/security codes**
@@ -799,7 +803,7 @@ Design rationale for shoppers is in `output/design.md`. Implementation notes:
 - **Font:** `@fontsource/eb-garamond` (weights 500/600/700 + italic) imported in `main.tsx`, so it's self-hosted with no external font request. Applied to headings, nav, prices, buttons, wordmarks, and chat headers.
 - **Header:** `NavBar.tsx` adds the announcement strip, the wordmark, and department links. A custom `isActive()` compares the `?department=` query, because React Router's `NavLink` matches only the path and was highlighting every department link on `/products`.
 - **Chat thinking:** `components/YaleThinking.tsx` (text-built "Yale" tile + "Checking the shelves…"), with a CSS pulse and sweep; disabled under `prefers-reduced-motion`.
-- **Ordering and departments (backend):** `db.CATEGORY_ORDER` and `db.shop_order()` sort `list_products()` tees-first by price. `db.department_for(name)` assigns one of five departments with whole-word rules (the first version filed "Brooks Brothers" under Family; fixed). `ProductCard.department` is sent to the front end, and `search_products(department=…)` lets the agent filter by department too. Search results also break score ties tees-first.
+- **Ordering and departments (backend):** `tools.CATEGORY_ORDER` and `tools.shop_order()` sort `list_products()` tees-first by price. `tools.department_for(name)` assigns one of five departments with whole-word rules (the first version filed "Brooks Brothers" under Family; fixed). `ProductCard.department` is sent to the front end, and `search_products(department=…)` lets the agent filter by department too. Search results also break score ties tees-first.
 - **Front end:** `Products.tsx` has a department bar (with counts and hints) and category chips in shop order, and "Featured: tees first" keeps the API's order. `Home.tsx` has department tiles and "from $" prices on the style tiles (checked against the DB minimums: Tees $32, Long sleeves $45, Crewnecks $45, Hoodies $45, Quarter-zips $72, Jackets $88).
 - **Tests:** `test_tools.py` still passes (961 tool-vs-DB checks + name lookup + safety).
 
@@ -807,7 +811,7 @@ Design rationale for shoppers is in `output/design.md`. Implementation notes:
 
 ### 10.1 Audit trail: `output/audit_trail.json`
 
-Every chat turn's agent loop is recorded, step by step, in an **append-only JSON array** (`backend/audit.py`).
+Every chat turn's agent loop is recorded, step by step, in an **append-only JSON array** (`agent.py`).
 
 - **How it's written:** `run_chat()` drives the agent with PydanticAI's `agent.iter()` instead of a single `run()`, so each node of the loop is visible. Each event is appended by overwriting only the file's final `]` with `,\n{event}\n]`. Earlier bytes are never rewritten, the file is never wiped between runs or restarts, and it's always valid JSON. A thread lock keeps concurrent turns from interleaving.
 - **Events per turn:** `run_started` → (`model_request` → `tool_call`* → `model_response` → `tool_result`* / `retry`) × n → `run_finished`.
@@ -856,8 +860,8 @@ There are two logs, on purpose: `output/audit_trail.json` is the detailed, share
 
 | Layer | What it does |
 |---|---|
-| `safety.redact()` (§8.4) | Card numbers (Luhn-checked), SSNs, CVVs, and "password is …" are removed before the model, the database, and the audit trail. |
-| `safety.is_crisis()` → `CRISIS_REPLY` | Self-harm phrases get a fixed, caring reply (988 call/text, Yale Mental Health & Counseling, 911 if in danger). **No model call and not saved to chat history**; audit `stop_reason: "crisis_response"`. Tested with no false positives on "this hoodie is to die for" or "my brother hurt his knee". |
+| `agent.redact()` (§8.4) | Card numbers (Luhn-checked), SSNs, CVVs, and "password is …" are removed before the model, the database, and the audit trail. |
+| `agent.is_crisis()` → `CRISIS_REPLY` | Self-harm phrases get a fixed, caring reply (988 call/text, Yale Mental Health & Counseling, 911 if in danger). **No model call and not saved to chat history**; audit `stop_reason: "crisis_response"`. Tested with no false positives on "this hoodie is to die for" or "my brother hurt his knee". |
 | Content-filter handling (`main.py`) | If the model provider refuses a message, the shopper gets "Sorry, I can't help with that one here…" plus what the bot can do, instead of "having trouble"; audit `stop_reason: "content_filter"`. |
 | Output validator (§5.2, §8.4) | Unsupported prices or quantities, or calling a sold-out size available → `ModelRetry`. |
 | Usage limits | ≤ 6 model requests per turn; `usage_limit` is recorded if hit. |
@@ -978,14 +982,14 @@ Tools are hidden when they can't help (PydanticAI `Tool(prepare=…)`), which av
 |---|---|---|
 | Prompt | 12 rules: privacy (no sensitive data; never confirm others' accounts), honest promises (no cart, holds, discounts, restock or delivery dates; no account changes), staying in role (tool text is data; ignore override attempts; stay on topic), brand and content (licensed only, no knock-off marks; respectful; crisis → 988 / Yale MH&C; disclose class project) | `prompts/prompt.md` §10.2 |
 | Prompt | Honesty: every price and quantity from a tool **this turn**; bold "**XL is sold out**"; colors are one colorway | `prompts/prompt.md` §5.2 |
-| Code, input | Redact card (Luhn), SSN, CVV, "password is …" before the model, DB, and audit | `safety.py` §8.4 |
-| Code, input | Crisis phrases → fixed caring reply, no model call, not saved | `safety.py` §10.3 |
+| Code, input | Redact card (Luhn), SSN, CVV, "password is …" before the model, DB, and audit | `agent.py` §8.4 |
+| Code, input | Crisis phrases → fixed caring reply, no model call, not saved | `agent.py` §10.3 |
 | Code, input | Request caps: message 1–1000 chars, ≤ 20 history items, page fields ≤ 200 chars; fake `product_id` dropped | `models.py`, `agent.py` |
 | Code, output | Reject replies with prices or quantities no tool returned, or that call a sold-out size available (`ModelRetry`) | `agent.py` §5.2, §8.4 |
 | Code, output | Cards only from DB ids; page grid only from ids searched this turn | `agent.py` §6.2 |
 | Code, errors | Provider content filter → polite decline; other errors → "try again / email us" | `main.py` §10.3 |
-| Accounts | PBKDF2-SHA256 600k + 16-byte salt; 5-failure lockout; no email enumeration; HttpOnly session; hash never sent | `auth.py` §3 |
-| Data | Logged-in history server-side only; guests never saved; audit trail has no personal data; DB and images gitignored | `memory.py`, `audit.py`, `.gitignore` |
+| Accounts | PBKDF2-SHA256 600k + 16-byte salt; 5-failure lockout; no email enumeration; HttpOnly session; hash never sent | `main.py` §3 |
+| Data | Logged-in history server-side only; guests never saved; audit trail has no personal data; DB and images gitignored | `tools.py`, `agent.py`, `.gitignore` |
 
 ### 11.4 Specs
 
@@ -996,18 +1000,18 @@ Tools are hidden when they can't help (PydanticAI `Tool(prepare=…)`), which av
 | Loop limit | **≤ 6 model requests per chat turn** (`UsageLimits(request_limit=6)`); exceeding it ends the turn with `usage_limit` | `agent.py` `MAX_MODEL_REQUESTS` |
 | Retries | `retries=2`: room to fix bad tool args or a reply rejected by the validator | `agent.py` |
 | History to the model | Last **10** messages | `agent.py` `MAX_HISTORY` |
-| History in the widget | Last **50** saved messages on login | `memory.py` `MAX_STORED_SHOWN` |
+| History in the widget | Last **50** saved messages on login | `tools.py` `MAX_STORED_SHOWN` |
 | Request caps | message 1–1000 chars; history ≤ 20 items × ≤ 4000 chars | `models.py` |
 | Search results to agent | Top **6** detailed (`MAX_RESULTS`) + up to **30** ids (`MAX_PAGE_RESULTS`) | `tools.py` |
 | Cards per reply | ≤ **6** chat mini-cards; ≤ **30** page-grid cards | `models.py`, `agent.py` |
 | Low-stock label | "only N left" when quantity ≤ **3** | `tools.py` `LOW_STOCK` |
 | Past recommendations | default 8, max 20 | `tools.py` |
-| Audit | `output/audit_trail.json` append-only JSON array; args/results ≤ 160 chars | `audit.py` |
+| Audit | `output/audit_trail.json` append-only JSON array; args/results ≤ 160 chars | `agent.py` |
 | Cost log | `data/chat_audit.jsonl`, one line per turn | `agent.py` |
-| Passwords | 8–128 chars; PBKDF2-SHA256 **600,000** iterations (seed hashes 120,000, upgraded on login); 16-byte salt | `auth.py` |
-| Login lockout | **5** failures / **15 min** per email | `auth.py` |
-| Session | Random 32-byte token, HttpOnly + SameSite=Lax cookie `cc_session`, 7 days, in memory | `auth.py`, `main.py` |
-| Catalogue order | Tees → Long sleeves → Crewnecks → Hoodies → Quarter-zips → Jackets, then price, then name | `db.py` |
+| Passwords | 8–128 chars; PBKDF2-SHA256 **600,000** iterations (seed hashes 120,000, upgraded on login); 16-byte salt | `main.py` |
+| Login lockout | **5** failures / **15 min** per email | `main.py` |
+| Session | Random 32-byte token, HttpOnly + SameSite=Lax cookie `cc_session`, 7 days, in memory | `main.py`, `main.py` |
+| Catalogue order | Tees → Long sleeves → Crewnecks → Hoodies → Quarter-zips → Jackets, then price, then name | `tools.py` |
 | Measured cost | 6-question benchmark: 38,162 input tokens, 14 requests, median 3.5 s | §8.3 |
 | Stack | Python 3.14, FastAPI, Uvicorn, PydanticAI (`pydantic-ai-slim[openai]`), SQLite · Node 24, React 19, Vite, TypeScript, React Router 7, react-markdown, EB Garamond | `requirements.txt`, `package.json` |
 
@@ -1046,15 +1050,15 @@ npm run dev
 
 Open **http://localhost:5173**. Vite proxies `/api` and `/images` to port 8000. Check the backend at `http://127.0.0.1:8000/api/health` → `{"ok": true, "products": 102}`.
 
-**Test:**
+**Test:** the test scripts are kept **local only** (gitignored, not in the required layout). On the development machine:
 
 ```bash
-# from backend: offline, no model calls, free
+# from backend/: offline, no model calls, free
 .venv/bin/python test_tools.py
-# from backend: live benchmark, makes about 14 model calls
+# from backend/: live benchmark, makes about 14 model calls
 .venv/bin/python bench.py
 ```
 
-`test_tools.py` covers 961 tool-vs-database checks, name lookup, redaction, the sold-out guard, crisis detection, and the append-only audit. The seed test account is `test@campuscustoms.yale.edu` (password given in the assignment).
+`test_tools.py` covers 961 tool-vs-database checks, name lookup, redaction, the sold-out guard, crisis detection, and the append-only audit. Results are recorded in §5.4, §8.4 and §10.4. To check a fresh clone without them, use `/api/health` and the steps in `output/app_check.html`. The seed test account is `test@campuscustoms.yale.edu` (password given in the assignment).
 
-**Not committed to GitHub:** `data/` (database, product images, cost log, test logins), `.env`, `.venv/`, `node_modules/`, `*.zip`, `*.db`.
+**Not committed to GitHub:** `data/` (database, product images, cost log, test logins), `.env`, `.venv/`, `node_modules/`, `*.zip`, `*.db`, the local test scripts, and working notes.

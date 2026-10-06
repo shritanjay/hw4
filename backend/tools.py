@@ -1,32 +1,265 @@
-"""Tools the shop agent can call. All read the local database. The agent never guesses price or stock.
+"""Tools the agent can call, plus the read-only data access they use.
 
-Each tool is a plain function taking RunContext[ShopDeps] so agent.py can register it.
+Sections:
+  1. Catalogue + inventory access (campus_customs.db): categories, departments, product cards/detail
+  2. Customer memory: save / reload each logged-in shopper's chat in chat_messages
+  3. Agent tools: search_products, get_product_info, check_stock, get_viewed_product,
+     get_customer_info, get_past_recommendations (all read-only on the database)
+
+The agent never guesses price or stock; every answer comes from these queries.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from pydantic_ai import RunContext, Tool
 from pydantic_ai.tools import ToolDefinition
 
-import db
-import memory
 from models import (
+    ChatMessage,
     CustomerProfile,
     NotFound,
     PageContext,
     PastRecommendation,
+    ProductCard,
+    ProductDetail,
     ProductInfo,
     ProductMatch,
     SearchResult,
     SizeStatus,
+    SizeStock,
     StockCheck,
     User,
     ViewedProduct,
 )
+
+# =============================================================================
+# 1. Catalogue + inventory access
+# =============================================================================
+
+HW4 = Path(__file__).resolve().parents[1]
+DATA_DIR = HW4 / "data"
+DB_PATH = DATA_DIR / "campus_customs.db"
+
+SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL"]
+
+# garment_type is free text ("t-shirt", "short-sleeve T-shirt", ...); map it to a few shop categories.
+CATEGORY_RULES = [
+    ("quarter-zip", "Quarter-zips"),
+    ("jacket", "Jackets"),
+    ("full-zip", "Jackets"),
+    ("hood", "Hoodies"),
+    ("crewneck", "Crewnecks"),
+    ("t-shirt", "Tees"),
+    ("long-sleeve", "Long sleeves"),
+    ("sweatshirt", "Crewnecks"),
+]
+
+
+# Shop order: cheapest everyday items first (tees $32) up to outerwear ($98).
+CATEGORY_ORDER = ["Tees", "Long sleeves", "Crewnecks", "Hoodies", "Quarter-zips", "Jackets"]
+
+# Departments group the 102 products the way people shop: who it's for / what it represents.
+# First matching rule wins; anything else is "Classic Yale".
+DEPARTMENTS = [
+    ("Grad & Professional Schools", ["school of", "law school", "divinity school", "forest school"]),
+    ("Residential Colleges", ["benjamin franklin", "berkeley", "branford", "davenport", "grace hopper",
+                              "jonathan edwards", "morse", "pierson", "saybrook", "silliman", "timothy dwight",
+                              "trumbull", "ezra stiles", "pauli murray"]),
+    ("Family", ["mom", "dad", "grandma", "grandpa", "aunt", "uncle", "brother", "sister", "cousin"]),
+    ("Sports & Game Day", ["baseball", "basketball", "football", "hockey", "soccer", "tennis", "golf", "diving",
+                           "swimming", "volleyball", "lacrosse", "fencing", "sailing", "squash", "track",
+                           "crew left chest", "harvard", "yale bowl", "gameday"]),
+]
+DEPARTMENT_ORDER = ["Classic Yale", "Sports & Game Day", "Residential Colleges", "Grad & Professional Schools", "Family"]
+
+
+def department_for(name: str) -> str:
+    n = name.lower()
+    for dept, keys in DEPARTMENTS:
+        # whole words only, so "Brooks Brothers" isn't "Family" (brother)
+        if any(re.search(rf"\b{re.escape(k)}\b", n) for k in keys):
+            return dept
+    return "Classic Yale"
+
+
+def shop_order(p) -> tuple:
+    """Sort key: category (tees first), then price, then name."""
+    cat = CATEGORY_ORDER.index(p.category) if p.category in CATEGORY_ORDER else len(CATEGORY_ORDER)
+    return (cat, p.price, p.name)
+
+
+def connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def category_for(garment_type: str) -> str:
+    g = garment_type.lower()
+    return next((label for key, label in CATEGORY_RULES if key in g), "Other")
+
+
+def short_description(text: str, limit: int = 110) -> str:
+    first = text.split(". ")[0].rstrip(".") + "."
+    return first if len(first) <= limit else first[: limit - 1].rsplit(" ", 1)[0] + "…"
+
+
+def image_url(path: str) -> str:
+    return f"/images/{path.removeprefix('products/')}"
+
+
+def _summary(row: sqlite3.Row, total_stock: int, sizes_in_stock: list[str] | None = None) -> ProductCard:
+    return ProductCard(
+        product_id=row["product_id"],
+        name=row["name"],
+        category=category_for(row["garment_type"]),
+        department=department_for(row["name"]),
+        garment_type=row["garment_type"],
+        price=row["price"],
+        short_description=short_description(row["description"]),
+        image_url=image_url(row["image_file_path"]),
+        in_stock=total_stock > 0,
+        sizes_in_stock=sizes_in_stock or [],
+    )
+
+
+def list_products() -> list[ProductCard]:
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT c.*, COALESCE(SUM(i.quantity), 0) AS total_stock,
+                      GROUP_CONCAT(CASE WHEN i.quantity > 0 THEN i.size END) AS sizes
+               FROM catalogue c LEFT JOIN inventory i ON i.product_id = c.product_id
+               GROUP BY c.product_id ORDER BY c.name"""
+        ).fetchall()
+    order = {s: i for i, s in enumerate(SIZE_ORDER)}
+    cards = [
+        _summary(r, r["total_stock"], sorted((r["sizes"] or "").split(",") if r["sizes"] else [], key=lambda s: order.get(s, 99)))
+        for r in rows
+    ]
+    return sorted(cards, key=shop_order)
+
+
+def get_product(product_id: str) -> ProductDetail | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM catalogue WHERE product_id = ?", (product_id,)).fetchone()
+        if row is None:
+            return None
+        stock = conn.execute("SELECT size, quantity FROM inventory WHERE product_id = ?", (product_id,)).fetchall()
+    sizes = sorted(
+        (SizeStock(size=s["size"], quantity=s["quantity"], in_stock=s["quantity"] > 0) for s in stock),
+        key=lambda s: SIZE_ORDER.index(s.size) if s.size in SIZE_ORDER else 99,
+    )
+    total = sum(s.quantity for s in sizes)
+    return ProductDetail(
+        **_summary(row, total, [s.size for s in sizes if s.in_stock]).model_dump(),
+        description=row["description"],
+        colors=json.loads(row["colors"]),
+        search_tags=json.loads(row["search_tags"]),
+        sizes=sizes,
+        total_stock=total,
+    )
+
+
+# =============================================================================
+# 2. Customer memory (chat_messages)
+# =============================================================================
+
+MAX_STORED_SHOWN = 50  # messages returned to the chat widget on login
+
+
+def _conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def save_turn(user_id: int, user_text: str, reply: str, products: list[ProductCard]) -> None:
+    """Store one question + answer for this user."""
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO chat_messages (user_id, role, content, products_json) VALUES (?, 'user', ?, NULL)",
+            (user_id, user_text),
+        )
+        conn.execute(
+            "INSERT INTO chat_messages (user_id, role, content, products_json) VALUES (?, 'assistant', ?, ?)",
+            (user_id, reply, json.dumps([p.model_dump() for p in products])),
+        )
+
+
+def _cards(products_json: str | None, by_id: dict[str, ProductCard]) -> list[ProductCard]:
+    """Rebuild cards from the current catalogue (fresh prices/stock), skipping ids that no longer exist."""
+    if not products_json:
+        return []
+    try:
+        items = json.loads(products_json)
+    except json.JSONDecodeError:
+        return []
+    ids = [i.get("product_id") for i in items if isinstance(i, dict)]
+    return [by_id[i] for i in ids if i in by_id]
+
+
+def load_history(user_id: int, limit: int = MAX_STORED_SHOWN) -> list[ChatMessage]:
+    """The user's most recent messages, oldest first, with product cards rebuilt from the DB."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT role, content, products_json, created_at FROM chat_messages "
+            "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+    by_id = {p.product_id: p for p in list_products()}
+    return [
+        ChatMessage(role=r["role"], content=r["content"], products=_cards(r["products_json"], by_id),
+                    created_at=r["created_at"])
+        for r in reversed(rows)
+        if r["role"] in ("user", "assistant")
+    ]
+
+
+def past_recommendations(user_id: int, limit: int = 10) -> list[dict]:
+    """Products this user was shown in earlier chats, newest first, with when and in reply to what."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, products_json, created_at FROM chat_messages "
+            "WHERE user_id = ? AND role = 'assistant' AND products_json IS NOT NULL ORDER BY id DESC",
+            (user_id,),
+        ).fetchall()
+        asked = {
+            r["id"]: r["content"]
+            for r in conn.execute("SELECT id, content FROM chat_messages WHERE user_id = ? AND role = 'user'", (user_id,))
+        }
+    by_id = {p.product_id: p for p in list_products()}
+    out, seen = [], set()
+    for r in rows:
+        question = asked.get(r["id"] - 1, "")
+        for card in _cards(r["products_json"], by_id):
+            if card.product_id not in seen:
+                seen.add(card.product_id)
+                out.append({"product_id": card.product_id, "name": card.name, "when": r["created_at"],
+                            "asked": question[:120]})
+        if len(out) >= limit:
+            break
+    return out[:limit]
+
+
+def count_messages(user_id: int) -> int:
+    with _conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM chat_messages WHERE user_id = ?", (user_id,)).fetchone()[0]
+
+
+def clear_history(user_id: int) -> int:
+    with _conn() as conn:
+        return conn.execute("DELETE FROM chat_messages WHERE user_id = ?", (user_id,)).rowcount
+
+
+# =============================================================================
+# 3. Agent tools
+# =============================================================================
 
 MAX_RESULTS = 6          # detailed results sent to the agent
 MAX_PAGE_RESULTS = 30    # ids the page grid can show (largest category is 28)
@@ -81,7 +314,7 @@ def _terms(text: str) -> list[str]:
 
 
 def _rows() -> list[dict]:
-    with db.connect() as conn:
+    with connect() as conn:
         rows = conn.execute("SELECT * FROM catalogue").fetchall()
         stock = conn.execute("SELECT product_id, size, quantity FROM inventory").fetchall()
     by_id: dict[str, dict[str, int]] = {}
@@ -93,21 +326,21 @@ def _rows() -> list[dict]:
         d["colors"] = json.loads(d["colors"])
         d["search_tags"] = json.loads(d["search_tags"])
         d["stock"] = by_id.get(d["product_id"], {})
-        d["category"] = db.category_for(d["garment_type"])
-        d["department"] = db.department_for(d["name"])
+        d["category"] = category_for(d["garment_type"])
+        d["department"] = department_for(d["name"])
         out.append(d)
     return out
 
 
 def _to_match(d: dict) -> ProductMatch:
-    ordered = sorted(d["stock"].items(), key=lambda kv: db.SIZE_ORDER.index(kv[0]) if kv[0] in db.SIZE_ORDER else 99)
+    ordered = sorted(d["stock"].items(), key=lambda kv: SIZE_ORDER.index(kv[0]) if kv[0] in SIZE_ORDER else 99)
     return ProductMatch(
         product_id=d["product_id"],
         name=d["name"],
         category=d["category"],
         price=d["price"],
         colors=d["colors"],
-        short_description=db.short_description(d["description"]),
+        short_description=short_description(d["description"]),
         sizes_in_stock=[s for s, q in ordered if q > 0],
         sold_out_sizes=[s for s, q in ordered if q == 0],
     )
@@ -164,7 +397,7 @@ def search_products(
             continue
         has_size = not size or d["stock"].get(size.upper(), 0) > 0
         results.append((has_size, score, d))
-    cat_rank = {c: i for i, c in enumerate(db.CATEGORY_ORDER)}
+    cat_rank = {c: i for i, c in enumerate(CATEGORY_ORDER)}
     results.sort(key=lambda x: (-x[1], not x[0], cat_rank.get(x[2]["category"], 99), x[2]["price"], x[2]["name"]))
     used = {k: v for k, v in {"category": category, "department": department, "color": color,
                               "max_price": max_price, "size": size}.items()
@@ -192,7 +425,7 @@ def search_products(
 
 def _resolve(product: str) -> tuple[str | None, list[str]]:
     """Exact product_id, else best name match. Returns (product_id or None, close candidates' names)."""
-    if db.get_product(product) is not None:
+    if get_product(product) is not None:
         return product, []
     terms = _terms(product)
     if not terms:
@@ -249,7 +482,7 @@ def get_product_info(ctx: RunContext[ShopDeps], product: str) -> ProductInfo | N
         product: the product_id, or the product's name as the shopper said it (e.g. "Yale Mom Hoodie").
     """
     product_id, candidates = _resolve(product)
-    item = db.get_product(product_id) if product_id else None
+    item = get_product(product_id) if product_id else None
     if item is None:
         return _unknown_product(product, candidates)
     return ProductInfo(
@@ -272,7 +505,7 @@ def check_stock(ctx: RunContext[ShopDeps], product: str, size: str | None = None
         size: the size the shopper asked about (XS, S, M, L, XL, XXL). Leave empty for every size.
     """
     product_id, candidates = _resolve(product)
-    item = db.get_product(product_id) if product_id else None
+    item = get_product(product_id) if product_id else None
     if item is None:
         return _unknown_product(product, candidates)
     sizes = [SizeStatus(size=s.size, quantity=s.quantity, status=_status(s.quantity)) for s in item.sizes]
@@ -326,7 +559,7 @@ def get_viewed_product(ctx: RunContext[ShopDeps]) -> ViewedProduct | NotFound:
     if not pid:
         return NotFound(error="no_product_page", message=f"The shopper is on {ctx.deps.page.path}, not a product page.",
                         hint="Ask which item they mean, or use search_products.")
-    item = db.get_product(pid)
+    item = get_product(pid)
     if item is None:
         return _unknown_product(pid)
     return ViewedProduct(
@@ -347,7 +580,7 @@ def get_past_recommendations(ctx: RunContext[ShopDeps], limit: int = 8) -> list[
     if ctx.deps.user is None:
         return NotFound(error="not_logged_in", message="Chat history is only saved for logged-in shoppers.",
                         hint="Suggest logging in to keep their chat history.")
-    return [PastRecommendation(**r) for r in memory.past_recommendations(ctx.deps.user.id, min(limit, 20))]
+    return [PastRecommendation(**r) for r in past_recommendations(ctx.deps.user.id, min(limit, 20))]
 
 
 # ---- Which tools the model is offered each turn ----------------------------------

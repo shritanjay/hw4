@@ -27,6 +27,8 @@ frontend/dist/
 .vscode/
 .idea/
 
-# ---- Local working notes (not part of the submitted layout) ----
+# ---- Local-only files (not part of the submitted layout) ----
 notes/
 output/database_fields.md
+backend/test_tools.py
+backend/bench.py

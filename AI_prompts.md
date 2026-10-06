@@ -279,7 +279,7 @@ finish output/harness.md so it knows how the system works. Model fiels in models
 
 ## Problem 13: Push to GitHub and submit the URL
 
-What was lacking: the GitHub CLI is not installed, so the repo has to be created on github.com and pushed with git; repo name and commit email had to be chosen. Restructured to the required layout (frontend/, backend/, output/, root requirements.txt, .env.example with placeholders, .gitignore, README.md); the data pack (data/campus_customs.db + data/products/) stays local and gitignored; README explains the data pack, the four agent files, and running back + front. Secret scan of tracked files: no key or passwords; removed a real professor email from harness test notes. Backend now starts without the data pack and health lists what is missing. Pushing from the terminal failed because GitHub needs a token, not the account password; pushed with GitHub Desktop instead. Verified on GitHub: all expected layout files present, no database, images, .env, API key, or test password. Submitted URL: https://github.com/shritanjay/hw4
+What was lacking: the GitHub CLI is not installed, so the repo has to be created on github.com and pushed with git; repo name and commit email had to be chosen. Restructured to the required layout (frontend/, backend/, output/, root requirements.txt, .env.example with placeholders, .gitignore, README.md); the data pack (data/campus_customs.db + data/products/) stays local and gitignored; README explains the data pack, the four agent files, and running back + front. Secret scan of tracked files: no key or passwords; removed a real professor email from harness test notes. Backend now starts without the data pack and health lists what is missing. Pushing from the terminal failed because GitHub needs a token, not the account password; pushed with GitHub Desktop instead. Verified on GitHub: all expected layout files present, no database, images, .env, API key, or test password. Submitted URL: https://github.com/shritanjay/hw4. Follow-ups: removed my working notes (notes/, output/database_fields.md) from the repo; then, to follow the picture exactly, merged the helper modules into the four backend files plus main.py (catalogue + chat memory → tools.py; redaction, crisis and audit → agent.py; accounts → main.py) and kept the test scripts local. Re-verified: offline tests pass, live login, chat, redaction and audit work, pyflakes clean, no secrets staged.
 
 ### Prompts
 
@@ -382,3 +382,8 @@ how to push origin in github desktop
 this is the layout i had given where did you get notes from?
 
 (The attached picture showed the same hw4/ layout as Prompt 2: AI_prompts.md, requirements.txt, .env.example, .gitignore, README.md, frontend/, backend/ with main.py, agent.py, models.py, tools.py, prompts/prompt.md, and output/ with harness.md, design.md, usability.md, app_check.html, app_check_images/, audit_trail.json.)
+
+#### Prompt 17
+
+can you pls follow everything in the picture.
+confirm then i will push

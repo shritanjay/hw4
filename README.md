@@ -19,13 +19,12 @@ hw4/
 ├── README.md
 ├── frontend/              # Vite React TypeScript app
 ├── backend/
-│   ├── main.py            # FastAPI app; run with: uvicorn main:app
+│   ├── main.py            # FastAPI app — run with: uvicorn main:app --reload --port 8000
 │   ├── agent.py           # ┐
 │   ├── models.py          # │ the agent: four files
 │   ├── tools.py           # │
-│   ├── prompts/
-│   │   └── prompt.md      # ┘
-│   └── db.py · auth.py · memory.py · safety.py · audit.py · test_tools.py · bench.py   (supporting code)
+│   └── prompts/
+│       └── prompt.md      # ┘
 └── output/
     ├── harness.md         # how the whole system works (start at §0 and §11)
     ├── design.md
@@ -40,11 +39,11 @@ hw4/
 | File | Role |
 |---|---|
 | `prompts/prompt.md` | System prompt: Campus Customs voice, which tool to call, honesty rules, 12 safety rules, store facts, output format |
-| `agent.py` | Builds the PydanticAI agent (model, prompt, tools, output type), runs each chat turn step by step, checks numbers against tool results, writes the audit trail |
-| `tools.py` | Tools the agent can call, all read-only on the database: `search_products`, `get_product_info`, `check_stock`, `get_viewed_product`, `get_customer_info`, `get_past_recommendations` |
+| `agent.py` | Input safety (redacts card numbers and passwords; crisis reply), the append-only audit trail, and the PydanticAI agent itself: model, prompt, tools, output type, step-by-step loop, and checks that numbers match tool results |
+| `tools.py` | Read-only database access (catalogue, stock, saved chats) and the tools the agent can call: `search_products`, `get_product_info`, `check_stock`, `get_viewed_product`, `get_customer_info`, `get_past_recommendations` |
 | `models.py` | Pydantic / PydanticAI types: API shapes, tool results, and the agent's structured output `ShopReply` |
 
-`main.py` exposes the agent at `POST /api/chat` next to the product and account routes.
+`main.py` holds accounts (secure password hashing, sign-up/login, sessions) and all API routes, and exposes the agent at `POST /api/chat`.
 
 ## Local-only data pack (not in git)
 
@@ -93,13 +92,11 @@ Next time, just run `source .venv/bin/activate && uvicorn main:app --reload --po
 
 **Seed test login:** `test@campuscustoms.yale.edu` (password given with the assignment). You can also create your own account on the site.
 
-## Tests
+## Checking it works
 
-```bash
-cd backend
-.venv/bin/python test_tools.py   # offline, no model calls: 961 tool-vs-database checks + safety tests
-.venv/bin/python bench.py        # live cost/latency benchmark (about 14 model calls)
-```
+- http://127.0.0.1:8000/api/health → `{"ok": true, "products": 102}`
+- Follow the three checks in `output/app_check.html`: stock answer, search cards, size filter.
+- Offline test scripts were used during development and are kept local (not part of the required layout). Their results are in `output/harness.md` §5.4, §8.4, §10.4.
 
 ## What to look at
 

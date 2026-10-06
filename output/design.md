@@ -12,4 +12,4 @@ Goal: look like Yale Bulldog Blue, stay dark, and make it quicker to get from "b
 
 **How it was checked:** EB Garamond is loaded and used for headings; the default order starts $32 → $45 → $58; the Grad & Professional Schools department shows 13 items with the SOM tee first; department counts add up to 102; exactly one nav link is highlighted per page (fixed a bug where all the department links looked active); and the chat shows the Yale tile + "Checking the shelves…" while answering. Asked "anything for a School of Management student?", the assistant filtered to that department and put the grid on the page.
 
-Grouping is rule-based on product names (whole words, so "Brooks Brothers" isn't filed under Family). It lives in `db.py` (`DEPARTMENTS`, `CATEGORY_ORDER`).
+Grouping is rule-based on product names (whole words, so "Brooks Brothers" isn't filed under Family). It lives in `tools.py` (`DEPARTMENTS`, `CATEGORY_ORDER`).

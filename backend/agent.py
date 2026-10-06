@@ -1,5 +1,10 @@
 """Shop agent entry point: builds the PydanticAI agent and runs one chat turn.
 
+Sections:
+  1. Input safety: redact card numbers / SSNs / passwords; crisis messages get a fixed caring reply
+  2. Audit trail: append-only output/audit_trail.json of every agent loop step (no personal data)
+  3. Agent: model via Portkey + prompts/prompt.md + tools.py + ShopReply output, output checks, run_chat()
+
 main.py calls run_chat(); the agent uses tools.py and returns a models.ShopReply.
 """
 
@@ -9,12 +14,13 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -30,13 +36,154 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 from pydantic_core import to_jsonable_python
-
-import audit
-import db
-import memory
-import safety
 from models import ChatMessage, ChatReply, PageContext, PageResults, ShopReply, User
+import tools
 from tools import TOOLS, ShopDeps
+
+# =============================================================================
+# 1. Input safety
+# =============================================================================
+
+CARD_RE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
+CVV_RE = re.compile(r"\b(cvv|cvc|security code)\b\s*(?:is|:|=)?\s*\d{3,4}\b", re.I)
+PASSWORD_RE = re.compile(r"\b(password|passcode|pin)\b(\s*(?:is|:|=)\s*)(\S+)", re.I)
+
+
+def _luhn_ok(digits: str) -> bool:
+    total, alt = 0, False
+    for ch in reversed(digits):
+        d = int(ch)
+        if alt:
+            d = d * 2 - 9 if d > 4 else d * 2
+        total += d
+        alt = not alt
+    return total % 10 == 0
+
+
+def redact(text: str) -> tuple[str, list[str]]:
+    """Return (safe_text, kinds_removed)."""
+    found: list[str] = []
+
+    def card(m: re.Match) -> str:
+        digits = re.sub(r"\D", "", m.group())
+        if 13 <= len(digits) <= 19 and _luhn_ok(digits):
+            found.append("card number")
+            return "[redacted card number]"
+        return m.group()
+
+    text = CARD_RE.sub(card, text)
+    if SSN_RE.search(text):
+        found.append("SSN")
+        text = SSN_RE.sub("[redacted SSN]", text)
+    if CVV_RE.search(text):
+        found.append("security code")
+        text = CVV_RE.sub(lambda m: f"{m.group(1)} [redacted]", text)
+    if PASSWORD_RE.search(text):
+        found.append("password")
+        text = PASSWORD_RE.sub(lambda m: f"{m.group(1)}{m.group(2)}[redacted]", text)
+    return text, list(dict.fromkeys(found))
+
+
+# ---- Crisis messages -------------------------------------------------------------
+# Handled before the model: an instant, consistent, caring reply that the provider's content
+# filter can't block, and the message is not saved to chat history.
+CRISIS_RE = re.compile(
+    r"\b(suicid\w*|kill(ing)? myself|end(ing)? my life|take my (own )?life|hurt(ing)? myself|harm(ing)? myself|"
+    r"self[- ]?harm\w*|want to die|don'?t want to (live|be alive)|no reason to live|cut(ting)? myself)\b",
+    re.I,
+)
+
+CRISIS_REPLY = (
+    "I'm really sorry you're feeling this way, and I'm glad you said something. You don't have to go through it "
+    "alone. Please reach out to someone now:\n\n"
+    "- **Call or text 988** (Suicide & Crisis Lifeline, 24/7, free and confidential)\n"
+    "- **Yale Mental Health & Counseling** through Yale Health, if you're a Yale student\n"
+    "- If you're in immediate danger, **call 911**\n\n"
+    "If it helps, tell a friend or someone you trust how you're feeling. I'm here to help with the shop whenever "
+    "you want, but your safety comes first."
+)
+
+
+def is_crisis(text: str) -> bool:
+    return bool(CRISIS_RE.search(text))
+
+
+# =============================================================================
+# 2. Audit trail (output/audit_trail.json)
+# =============================================================================
+
+AUDIT_TRAIL = Path(__file__).resolve().parents[1] / "output" / "audit_trail.json"
+MAX_SHORT = 160
+_audit_lock = threading.Lock()
+
+
+def _audit_short(value: Any, limit: int = MAX_SHORT) -> str:
+    text = value if isinstance(value, str) else json.dumps(to_jsonable_python(value, fallback=str), ensure_ascii=False)
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def summarize_result(tool: str, content: Any) -> str:
+    """One-line, PII-free summary of a tool result."""
+    data = to_jsonable_python(content, fallback=str)
+    if isinstance(data, dict) and "error" in data:
+        return f"{data['error']}: {_audit_short(data.get('message', ''), 120)}"
+    if tool == "search_products" and isinstance(data, dict):
+        names = [r["name"] for r in data.get("results", [])[:3]]
+        return f"{data.get('total_matches', 0)} matches; top: {', '.join(names) or '-'}" + (
+            f" | note: {_audit_short(data['note'], 80)}" if data.get("note") else "")
+    if tool == "check_stock" and isinstance(data, dict):
+        return f"{data.get('name')} ${data.get('price')}: {_audit_short(data.get('summary', ''), 120)}"
+    if tool in ("get_product_info", "get_viewed_product") and isinstance(data, dict):
+        return (f"{data.get('name')} ${data.get('price')}; colors {data.get('colors')}; "
+                f"sold out: {data.get('sold_out_sizes') or 'none'}")
+    if tool == "get_customer_info" and isinstance(data, dict):
+        return ("logged-in profile returned (name/email withheld from audit)" if data.get("logged_in")
+                else "guest: no profile")
+    if tool == "get_past_recommendations" and isinstance(data, list):
+        return f"{len(data)} past recommendations: {', '.join(r['name'] for r in data[:3])}"
+    if tool == "final_result" and isinstance(data, str):
+        return _audit_short(data, 80)
+    return _audit_short(data)
+
+
+def safe_args(tool: str, args: Any) -> str:
+    """Tool args are shopper search words / product names / sizes, never personal fields."""
+    if tool == "final_result" and isinstance(args, dict):
+        page = args.get("page_results") or {}
+        return _audit_short({"product_ids": args.get("product_ids", []),
+                       "page_results": page and {"title": page.get("title"), "count": len(page.get("product_ids", []))},
+                       "reply_chars": len(args.get("reply", ""))})
+    return _audit_short(args)
+
+
+def audit_append(event: dict[str, Any]) -> None:
+    """Append one event to the JSON array without rewriting earlier events."""
+    event = {"time": datetime.now(timezone.utc).isoformat(timespec="milliseconds"), **event}
+    line = json.dumps(event, ensure_ascii=False)
+    with _audit_lock:
+        AUDIT_TRAIL.parent.mkdir(parents=True, exist_ok=True)
+        if not AUDIT_TRAIL.exists() or AUDIT_TRAIL.stat().st_size == 0:
+            AUDIT_TRAIL.write_text(f"[\n{line}\n]\n", encoding="utf-8")
+            return
+        with AUDIT_TRAIL.open("r+b") as f:
+            f.seek(0, os.SEEK_END)
+            pos = f.tell()
+            # walk back to the closing bracket and overwrite from there
+            while pos > 0:
+                pos -= 1
+                f.seek(pos)
+                if f.read(1) == b"]":
+                    break
+            f.seek(pos)
+            f.truncate()
+            f.write(f",\n{line}\n]\n".encode("utf-8"))
+
+
+# =============================================================================
+# 3. Agent
+# =============================================================================
 
 HERE = Path(__file__).resolve().parent
 # HW4/.env first, then the workspace root .env that holds PORTKEY_API_KEY.
@@ -48,7 +195,7 @@ PORTKEY_BASE_URL = os.getenv("PORTKEY_BASE_URL", "https://api.portkey.ai/v1").rs
 PROMPT_PATH = HERE / "prompts" / "prompt.md"
 log = logging.getLogger("campus_customs.agent")
 MAX_HISTORY = 10          # earlier messages sent back to the model (cost cap)
-AUDIT_PATH = db.DATA_DIR / "chat_audit.jsonl"  # per-turn cost/latency log (data/ is gitignored)
+AUDIT_PATH = tools.DATA_DIR / "chat_audit.jsonl"  # per-turn cost/latency log (data/ is gitignored)
 MAX_MODEL_REQUESTS = 6    # model round-trips per turn (tool calls included)
 
 
@@ -88,7 +235,7 @@ def build_agent() -> Agent[ShopDeps, ShopReply]:
         page = ctx.deps.page
         lines = [f"## Where they are on the site\nPage: {page.path}"]
         if page.product_id:
-            name = next((p.name for p in db.list_products() if p.product_id == page.product_id), None)
+            name = next((p.name for p in tools.list_products() if p.product_id == page.product_id), None)
             if name:
                 lines.append(
                     f'Viewing product: "{name}" (product_id: {page.product_id}). "This", "it", or "this one" '
@@ -160,11 +307,11 @@ async def _run_with_audit(message: str, deps: ShopDeps, history: list[ChatMessag
     """Run the agent step by step (agent.iter) and append each loop event to output/audit_trail.json.
 
     Events: run_started → model_request → tool_call / tool_result / retry → … → run_finished (stop_reason).
-    No chat text, names or emails are written (see audit.py).
+    No chat text, names or emails are written (see section 2).
     """
     run_id = uuid.uuid4().hex[:12]
     base = {"run_id": run_id}
-    audit.append({**base, "event": "run_started", "logged_in": deps.user is not None,
+    audit_append({**base, "event": "run_started", "logged_in": deps.user is not None,
                   "page": deps.page.path, "on_product_page": bool(deps.page.product_id),
                   "message_chars": len(message), "history_messages": len(history),
                   "redacted": redacted or None, "model": MODEL_NAME})
@@ -183,20 +330,20 @@ async def _run_with_audit(message: str, deps: ShopDeps, history: list[ChatMessag
                     step += 1
                     for part in node.request.parts:
                         if isinstance(part, ToolReturnPart):
-                            audit.append({**base, "event": "tool_result", "step": step, "tool": part.tool_name,
-                                          "result": audit.summarize_result(part.tool_name, part.content)})
+                            audit_append({**base, "event": "tool_result", "step": step, "tool": part.tool_name,
+                                          "result": summarize_result(part.tool_name, part.content)})
                         elif getattr(part, "part_kind", "") == "retry-prompt":
-                            audit.append({**base, "event": "retry", "step": step,
+                            audit_append({**base, "event": "retry", "step": step,
                                           "tool": getattr(part, "tool_name", None),
-                                          "reason": audit._short(part.content, 200)})
-                    audit.append({**base, "event": "model_request", "step": step})
+                                          "reason": _audit_short(part.content, 200)})
+                    audit_append({**base, "event": "model_request", "step": step})
                 elif Agent.is_call_tools_node(node):
                     resp = node.model_response
                     calls = [p for p in resp.parts if getattr(p, "part_kind", "") == "tool-call"]
                     for c in calls:
-                        audit.append({**base, "event": "tool_call", "step": step, "tool": c.tool_name,
-                                      "args": audit.safe_args(c.tool_name, c.args_as_dict())})
-                    audit.append({**base, "event": "model_response", "step": step,
+                        audit_append({**base, "event": "tool_call", "step": step, "tool": c.tool_name,
+                                      "args": safe_args(c.tool_name, c.args_as_dict())})
+                    audit_append({**base, "event": "model_response", "step": step,
                                   "finish_reason": resp.finish_reason,
                                   "tool_calls": [c.tool_name for c in calls],
                                   "input_tokens": resp.usage.input_tokens, "output_tokens": resp.usage.output_tokens})
@@ -207,12 +354,12 @@ async def _run_with_audit(message: str, deps: ShopDeps, history: list[ChatMessag
         name = type(exc).__name__
         stop_reason = ("usage_limit" if name == "UsageLimitExceeded"
                        else "content_filter" if "content_filter" in str(exc) else "error")
-        audit.append({**base, "event": "run_finished", "stop_reason": stop_reason, "error": name,
+        audit_append({**base, "event": "run_finished", "stop_reason": stop_reason, "error": name,
                       "seconds": round(time.perf_counter() - started, 2), "steps": step})
         raise
     usage = result.usage
     out = result.output
-    audit.append({**base, "event": "run_finished", "stop_reason": stop_reason,
+    audit_append({**base, "event": "run_finished", "stop_reason": stop_reason,
                   "seconds": round(time.perf_counter() - started, 2), "steps": step,
                   "requests": usage.requests, "input_tokens": usage.input_tokens,
                   "output_tokens": usage.output_tokens, "reply_chars": len(out.reply),
@@ -310,29 +457,29 @@ async def run_chat(
     Logged in: history comes from the chat_messages table (the browser's copy is ignored), and the
     turn is saved there afterwards. Guest: the browser's in-memory history is used and nothing is saved.
     """
-    message, redacted = safety.redact(message)
-    if safety.is_crisis(message):
+    message, redacted = redact(message)
+    if is_crisis(message):
         # No model call and nothing saved: a fixed, caring reply with crisis resources.
         run_id = uuid.uuid4().hex[:12]
-        audit.append({"run_id": run_id, "event": "run_started", "logged_in": user is not None,
+        audit_append({"run_id": run_id, "event": "run_started", "logged_in": user is not None,
                       "page": (page or PageContext()).path, "message_chars": len(message), "model": None})
-        audit.append({"run_id": run_id, "event": "run_finished", "stop_reason": "crisis_response",
-                      "steps": 0, "requests": 0, "note": "safety.is_crisis matched; model not called; not saved"})
-        return ChatReply(reply=safety.CRISIS_REPLY)
-    history = [m.model_copy(update={"content": safety.redact(m.content)[0]}) for m in history]
+        audit_append({"run_id": run_id, "event": "run_finished", "stop_reason": "crisis_response",
+                      "steps": 0, "requests": 0, "note": "is_crisis matched; model not called; not saved"})
+        return ChatReply(reply=CRISIS_REPLY)
+    history = [m.model_copy(update={"content": redact(m.content)[0]}) for m in history]
     page = page or PageContext()
-    if page.product_id and db.get_product(page.product_id) is None:
+    if page.product_id and tools.get_product(page.product_id) is None:
         page = page.model_copy(update={"product_id": None})  # ignore ids that aren't real products
     saved_count = 0
     if user is not None:
-        history = memory.load_history(user.id, limit=MAX_HISTORY)
-        saved_count = memory.count_messages(user.id)
+        history = tools.load_history(user.id, limit=MAX_HISTORY)
+        saved_count = tools.count_messages(user.id)
     deps = ShopDeps(user=user, page=page, saved_count=saved_count)
     started = time.perf_counter()
     result = await _run_with_audit(message, deps, history, redacted)
     out = result.output
     _audit(result, started, user, page)
-    by_id = {p.product_id: p for p in db.list_products()}
+    by_id = {p.product_id: p for p in tools.list_products()}
 
     def real(ids: list[str], limit: int, only_searched: bool = False) -> list[str]:
         """Keep ids that exist (drops anything made up), de-duplicated, capped."""
@@ -358,5 +505,5 @@ async def run_chat(
         redacted=redacted, user_message=message if redacted else None,
     )
     if user is not None:
-        memory.save_turn(user.id, message, reply.reply, reply.products)
+        tools.save_turn(user.id, message, reply.reply, reply.products)
     return reply
