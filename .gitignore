@@ -26,3 +26,7 @@ frontend/dist/
 .DS_Store
 .vscode/
 .idea/
+
+# ---- Local working notes (not part of the submitted layout) ----
+notes/
+output/database_fields.md

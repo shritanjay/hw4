@@ -376,3 +376,9 @@ remember what is local and what is for git right
 #### Prompt 15
 
 how to push origin in github desktop
+
+#### Prompt 16
+
+this is the layout i had given where did you get notes from?
+
+(The attached picture showed the same hw4/ layout as Prompt 2: AI_prompts.md, requirements.txt, .env.example, .gitignore, README.md, frontend/, backend/ with main.py, agent.py, models.py, tools.py, prompts/prompt.md, and output/ with harness.md, design.md, usability.md, app_check.html, app_check_images/, audit_trail.json.)

@@ -26,14 +26,13 @@ hw4/
 │   ├── prompts/
 │   │   └── prompt.md      # ┘
 │   └── db.py · auth.py · memory.py · safety.py · audit.py · test_tools.py · bench.py   (supporting code)
-├── output/
-│   ├── harness.md         # how the whole system works (start at §0 and §11)
-│   ├── design.md
-│   ├── usability.md
-│   ├── app_check.html     # live-site checks; double-click to open
-│   ├── app_check_images/  # screenshots linked from app_check.html
-│   └── audit_trail.json   # append-only agent loop log
-└── notes/research.md      # store research used for the agent prompt
+└── output/
+    ├── harness.md         # how the whole system works (start at §0 and §11)
+    ├── design.md
+    ├── usability.md
+    ├── app_check.html     # live-site checks; double-click to open
+    ├── app_check_images/  # screenshots linked from app_check.html
+    └── audit_trail.json   # append-only agent loop log
 ```
 
 ### The agent (four files under `backend/`)
