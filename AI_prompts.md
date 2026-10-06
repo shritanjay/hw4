@@ -336,3 +336,23 @@ data/
 #### Prompt 5
 
 https://github.com/shritanjay/hw4
+
+#### Prompt 6
+
+where to run in which terminal?
+
+#### Prompt 7
+
+it keeps failing
+
+#### Prompt 8
+
+but my user name is shritanjay.bhatia@yale.edu
+
+#### Prompt 9
+
+(ran in the chat's shell:) git push -u origin main  →  fatal: not a git repository (or any of the parent directories): .git
+
+#### Prompt 10
+
+still doesnt work
