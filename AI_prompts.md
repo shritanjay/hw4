@@ -279,7 +279,7 @@ finish output/harness.md so it knows how the system works. Model fiels in models
 
 ## Problem 13: Push to GitHub and submit the URL
 
-What was lacking: the GitHub CLI is not installed, so the repo has to be created on github.com and pushed with git; repo name and commit email had to be chosen. Restructured to the required layout (frontend/, backend/, output/, root requirements.txt, .env.example with placeholders, .gitignore, README.md); the data pack (data/campus_customs.db + data/products/) stays local and gitignored; README explains the data pack, the four agent files, and running back + front. Secret scan of tracked files: no key or passwords; removed a real professor email from harness test notes. Backend now starts without the data pack and health lists what is missing.
+What was lacking: the GitHub CLI is not installed, so the repo has to be created on github.com and pushed with git; repo name and commit email had to be chosen. Restructured to the required layout (frontend/, backend/, output/, root requirements.txt, .env.example with placeholders, .gitignore, README.md); the data pack (data/campus_customs.db + data/products/) stays local and gitignored; README explains the data pack, the four agent files, and running back + front. Secret scan of tracked files: no key or passwords; removed a real professor email from harness test notes. Backend now starts without the data pack and health lists what is missing. Pushing from the terminal failed because GitHub needs a token, not the account password; pushed with GitHub Desktop instead. Verified on GitHub: all expected layout files present, no database, images, .env, API key, or test password. Submitted URL: https://github.com/shritanjay/hw4
 
 ### Prompts
 
@@ -360,3 +360,19 @@ still doesnt work
 #### Prompt 11
 
 i have done option a can you checl
+
+#### Prompt 12
+
+okay check now and then see if we should push
+
+#### Prompt 13
+
+okay push again then i will paste on canvas
+
+#### Prompt 14
+
+remember what is local and what is for git right
+
+#### Prompt 15
+
+how to push origin in github desktop
